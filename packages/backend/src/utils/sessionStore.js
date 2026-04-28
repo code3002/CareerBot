@@ -1,27 +1,35 @@
+const fs = require("fs");
+
+const SESSIONS_FILE = "/tmp/careerbot-sessions.json";
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 
-const sessions = new Map();
-const sessionTimeouts = new Map();
-
-function clearSessionTimeout(sessionId) {
-  const existingTimeout = sessionTimeouts.get(sessionId);
-
-  if (existingTimeout) {
-    clearTimeout(existingTimeout);
-    sessionTimeouts.delete(sessionId);
+function loadFromDisk() {
+  try {
+    if (!fs.existsSync(SESSIONS_FILE)) return {};
+    const raw = fs.readFileSync(SESSIONS_FILE, "utf8");
+    const all = JSON.parse(raw);
+    const now = Date.now();
+    const valid = {};
+    for (const [id, session] of Object.entries(all)) {
+      if (now - session.createdAt < SESSION_TTL_MS) {
+        valid[id] = session;
+      }
+    }
+    return valid;
+  } catch {
+    return {};
   }
 }
 
-function scheduleSessionExpiry(sessionId) {
-  clearSessionTimeout(sessionId);
-
-  const timeout = setTimeout(() => {
-    sessions.delete(sessionId);
-    sessionTimeouts.delete(sessionId);
-  }, SESSION_TTL_MS);
-
-  sessionTimeouts.set(sessionId, timeout);
+function saveToDisk(sessions) {
+  try {
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions), "utf8");
+  } catch {
+    // disk errors are non-fatal — sessions still work in memory
+  }
 }
+
+const sessions = loadFromDisk();
 
 function createSession(sessionId, data) {
   const session = {
@@ -38,37 +46,35 @@ function createSession(sessionId, data) {
     ...data
   };
 
-  sessions.set(sessionId, session);
-  scheduleSessionExpiry(sessionId);
-
+  sessions[sessionId] = session;
+  saveToDisk(sessions);
   return session;
 }
 
 function getSession(sessionId) {
-  return sessions.get(sessionId) || null;
+  const session = sessions[sessionId];
+  if (!session) return null;
+  if (Date.now() - session.createdAt > SESSION_TTL_MS) {
+    delete sessions[sessionId];
+    saveToDisk(sessions);
+    return null;
+  }
+  return session;
 }
 
 function updateSession(sessionId, data) {
-  const existingSession = sessions.get(sessionId);
+  const existing = sessions[sessionId];
+  if (!existing) return null;
 
-  if (!existingSession) {
-    return null;
-  }
-
-  const updatedSession = {
-    ...existingSession,
+  const updated = {
+    ...existing,
     ...data,
-    createdAt: data.createdAt ?? existingSession.createdAt
+    createdAt: data.createdAt ?? existing.createdAt
   };
 
-  sessions.set(sessionId, updatedSession);
-  scheduleSessionExpiry(sessionId);
-
-  return updatedSession;
+  sessions[sessionId] = updated;
+  saveToDisk(sessions);
+  return updated;
 }
 
-module.exports = {
-  createSession,
-  getSession,
-  updateSession
-};
+module.exports = { createSession, getSession, updateSession };
