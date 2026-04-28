@@ -1,3 +1,4 @@
+const path = require("path");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const express = require("express");
@@ -25,11 +26,8 @@ app.use(
 );
 app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.json({
-    status: "ok",
-    service: "backend"
-  });
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", service: "backend" });
 });
 
 app.use("/api/upload", uploadRouter);
@@ -37,7 +35,13 @@ app.use("/api/profile", profileRouter);
 app.use("/api/chat", chatRouter);
 app.use("/api/score", scoreRouter);
 
-app.use((err, req, res, next) => {
+const frontendDist = path.join(__dirname, "../../frontend/dist");
+app.use(express.static(frontendDist));
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(frontendDist, "index.html"));
+});
+
+app.use((err, _req, res, next) => {
   console.error(err);
 
   if (res.headersSent) {

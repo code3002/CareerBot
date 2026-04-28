@@ -6,10 +6,15 @@
     "packages/frontend"
   ],
   "scripts": {
+    "build": "npm run build --workspace=packages/frontend",
+    "start": "node packages/backend/src/app.js",
     "dev": "concurrently \"npm run dev --workspace=packages/backend\" \"npm run dev --workspace=packages/frontend\"",
     "dev:backend": "npm run dev --workspace=packages/backend",
     "dev:frontend": "npm run dev --workspace=packages/frontend",
     "install:all": "npm install"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"
