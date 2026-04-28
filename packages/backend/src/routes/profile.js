@@ -6,7 +6,7 @@ const { createSession } = require("../utils/sessionStore");
 
 const router = express.Router();
 
-router.post("/", (req, res) => {
+router.post("/", async (req, res, next) => {
   const { profileText, sourceType = "linkedin" } = req.body || {};
 
   if (!profileText || !String(profileText).trim()) {
@@ -19,23 +19,27 @@ router.post("/", (req, res) => {
   const cleanedText = String(profileText).trim();
   const snapshot = buildCareerSnapshot(cleanedText, sourceType);
 
-  createSession(sessionId, {
-    resumeText: cleanedText,
-    sourceType,
-    conversationHistory: [],
-    snapshot,
-    selectedPath: null,
-    pathRound: 0,
-    stage: "analyzed",
-    preferenceSignals: {},
-    events: [
-      {
-        type: "profile_created",
-        at: Date.now(),
-        sourceType
-      }
-    ]
-  });
+  try {
+    await createSession(sessionId, {
+      resumeText: cleanedText,
+      sourceType,
+      conversationHistory: [],
+      snapshot,
+      selectedPath: null,
+      pathRound: 0,
+      stage: "analyzed",
+      preferenceSignals: {},
+      events: [
+        {
+          type: "profile_created",
+          at: Date.now(),
+          sourceType
+        }
+      ]
+    });
+  } catch (error) {
+    return next(error);
+  }
 
   return res.json({
     success: true,

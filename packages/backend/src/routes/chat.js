@@ -87,7 +87,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
 
     if (!session) {
       return res.status(404).json({
@@ -128,7 +128,7 @@ router.post("/", async (req, res) => {
       { role: "assistant", content: compressForHistory(response) }
     ];
 
-    updateSession(sessionId, {
+    await updateSession(sessionId, {
       conversationHistory,
       pathRound: nextPathRound,
       selectedPath: nextSelectedPath,
@@ -164,7 +164,15 @@ router.post("/stream", async (req, res) => {
     return res.status(400).json({ error: "Both sessionId and message are required." });
   }
 
-  const session = getSession(sessionId);
+  let session;
+
+  try {
+    session = await getSession(sessionId);
+  } catch (error) {
+    return res.status(500).json({
+      error: error.message || "Something went wrong while loading the session."
+    });
+  }
 
   if (!session) {
     return res.status(404).json({ error: "Session not found." });
@@ -228,7 +236,7 @@ router.post("/stream", async (req, res) => {
       { role: "assistant", content: compressForHistory(finalParsed) }
     ];
 
-    updateSession(sessionId, {
+    await updateSession(sessionId, {
       conversationHistory,
       pathRound: nextPathRound,
       selectedPath: nextSelectedPath,

@@ -42,12 +42,21 @@ router.post("/", (req, res, next) => {
       return res.status(400).json({ error: "No resume file was uploaded." });
     }
 
+    let resumeText;
+
     try {
-      const resumeText = await parsePDF(req.file.buffer);
+      resumeText = await parsePDF(req.file.buffer);
+    } catch (parseError) {
+      return res.status(422).json({
+        error: parseError.message || "Failed to parse the uploaded PDF."
+      });
+    }
+
+    try {
       const sessionId = uuidv4();
       const snapshot = buildCareerSnapshot(resumeText, "resume");
 
-      createSession(sessionId, {
+      await createSession(sessionId, {
         resumeText,
         sourceType: "resume",
         conversationHistory: [],
@@ -70,10 +79,8 @@ router.post("/", (req, res, next) => {
         success: true,
         snapshot
       });
-    } catch (parseError) {
-      return res.status(422).json({
-        error: parseError.message || "Failed to parse the uploaded PDF."
-      });
+    } catch (error) {
+      return next(error);
     }
   });
 });

@@ -3,12 +3,13 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const express = require("express");
 
+dotenv.config();
+
+const { initializeSessionStore } = require("./utils/sessionStore");
 const uploadRouter = require("./routes/upload");
 const chatRouter = require("./routes/chat");
 const profileRouter = require("./routes/profile");
 const scoreRouter = require("./routes/score");
-
-dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
@@ -53,6 +54,13 @@ app.use((err, _req, res, next) => {
   });
 });
 
-app.listen(port, () => {
-  console.log(`Backend running on port ${port}`);
-});
+initializeSessionStore()
+  .then(() => {
+    app.listen(port, () => {
+      console.log(`Backend running on port ${port}`);
+    });
+  })
+  .catch((error) => {
+    console.error("Failed to initialize session store:", error);
+    process.exit(1);
+  });

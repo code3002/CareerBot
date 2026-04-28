@@ -12,13 +12,13 @@ router.get("/:sessionId", async (req, res) => {
     return res.status(400).json({ error: "sessionId is required." });
   }
 
-  const session = getSession(sessionId);
-
-  if (!session) {
-    return res.status(404).json({ error: "Session not found." });
-  }
-
   try {
+    const session = await getSession(sessionId);
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
     const scorecard = await generateScorecard(session.resumeText, session.sourceType);
     return res.json({ scorecard });
   } catch (error) {
