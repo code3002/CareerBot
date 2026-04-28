@@ -24,14 +24,17 @@ function buildDefaultSession(data) {
 }
 
 function getPoolConfig() {
+  const databaseUrl = process.env.DATABASE_URL;
   const config = {
-    connectionString: process.env.DATABASE_URL
+    connectionString: databaseUrl
   };
-
-  if (
+  const sslDisabled = process.env.DATABASE_SSL === "false";
+  const sslRequired =
     process.env.DATABASE_SSL === "true" ||
-    process.env.DATABASE_URL.includes("sslmode=require")
-  ) {
+    process.env.NODE_ENV === "production" ||
+    databaseUrl.includes("sslmode=require");
+
+  if (!sslDisabled && sslRequired) {
     config.ssl = { rejectUnauthorized: false };
   }
 
