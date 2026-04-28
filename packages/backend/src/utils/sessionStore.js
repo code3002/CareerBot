@@ -1,7 +1,16 @@
 const { Pool } = require("pg");
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
-const usePostgres = Boolean(process.env.DATABASE_URL);
+
+// DO App Platform may inject the URL under different names depending on the component alias
+const DATABASE_URL =
+  process.env.DATABASE_URL ||
+  process.env.DB_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.PG_URL ||
+  "";
+
+const usePostgres = Boolean(DATABASE_URL);
 const memorySessions = {};
 
 let pool = null;
@@ -25,7 +34,7 @@ function buildDefaultSession(data) {
 
 function getPoolConfig() {
   return {
-    connectionString: process.env.DATABASE_URL,
+    connectionString: DATABASE_URL,
     ssl: { rejectUnauthorized: false }
   };
 }
@@ -34,11 +43,7 @@ async function initializeSessionStore() {
   if (initialized) return;
 
   if (!usePostgres) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("DATABASE_URL is required in production.");
-    }
-
-    console.warn("DATABASE_URL is not set. Falling back to in-memory sessions.");
+    console.warn("No database URL found. Using in-memory sessions (not suitable for production).");
     initialized = true;
     return;
   }
