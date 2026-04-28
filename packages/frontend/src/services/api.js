@@ -7,14 +7,9 @@ const apiClient = axios.create({
 
 function formatError(error, fallbackMessage) {
   if (axios.isAxiosError(error)) {
-    return {
-      error: error.response?.data?.error || error.message || fallbackMessage
-    };
+    return { error: error.response?.data?.error || error.message || fallbackMessage };
   }
-
-  return {
-    error: fallbackMessage
-  };
+  return { error: fallbackMessage };
 }
 
 export async function uploadResume(file) {
@@ -23,15 +18,9 @@ export async function uploadResume(file) {
 
   try {
     const response = await apiClient.post("/api/upload", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data"
-      }
+      headers: { "Content-Type": "multipart/form-data" }
     });
-
-    return {
-      sessionId: response.data.sessionId,
-      snapshot: response.data.snapshot
-    };
+    return { resumeText: response.data.resumeText, snapshot: response.data.snapshot };
   } catch (error) {
     return formatError(error, "We could not upload your resume.");
   }
@@ -39,50 +28,30 @@ export async function uploadResume(file) {
 
 export async function createProfileSession(profileText, sourceType = "linkedin") {
   try {
-    const response = await apiClient.post("/api/profile", {
-      profileText,
-      sourceType
-    });
-
-    return {
-      sessionId: response.data.sessionId,
-      snapshot: response.data.snapshot
-    };
+    const response = await apiClient.post("/api/profile", { profileText, sourceType });
+    return { resumeText: response.data.resumeText, snapshot: response.data.snapshot };
   } catch (error) {
     return formatError(error, "We could not create a session from that profile.");
   }
 }
 
-export async function sendMessage(sessionId, message) {
+export async function fetchScorecard(resumeText, sourceType = "resume") {
   try {
-    const response = await apiClient.post("/api/chat", {
-      sessionId,
-      message
-    });
-
-    return response.data;
-  } catch (error) {
-    return formatError(error, "We could not reach the career coach.");
-  }
-}
-
-export async function fetchScorecard(sessionId) {
-  try {
-    const response = await apiClient.get(`/api/score/${sessionId}`);
+    const response = await apiClient.post("/api/score", { resumeText, sourceType });
     return { scorecard: response.data.scorecard };
   } catch (error) {
     return formatError(error, "Could not generate scorecard.");
   }
 }
 
-export async function sendMessageStream(sessionId, message, onToken, onDone, onError) {
+export async function sendMessageStream(context, message, onToken, onDone, onError) {
   const baseURL = import.meta.env.VITE_API_URL ?? "";
 
   try {
     const response = await fetch(`${baseURL}/api/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, message }),
+      body: JSON.stringify({ ...context, message }),
       signal: AbortSignal.timeout(90000)
     });
 
@@ -115,7 +84,7 @@ export async function sendMessageStream(sessionId, message, onToken, onDone, onE
             if (event.error) {
               onError(event.error);
             } else {
-              onDone(event.response, event.meta);
+              onDone(event.response, event.meta, event.nextConversationHistory || []);
             }
           } else if (event.token) {
             onToken(event.token, event.accumulated);

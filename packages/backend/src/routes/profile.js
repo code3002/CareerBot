@@ -1,12 +1,10 @@
 const express = require("express");
-const { v4: uuidv4 } = require("uuid");
 
 const { buildCareerSnapshot } = require("../services/profileAnalyzer");
-const { createSession } = require("../utils/sessionStore");
 
 const router = express.Router();
 
-router.post("/", async (req, res, next) => {
+router.post("/", (req, res) => {
   const { profileText, sourceType = "linkedin" } = req.body || {};
 
   if (!profileText || !String(profileText).trim()) {
@@ -15,37 +13,10 @@ router.post("/", async (req, res, next) => {
     });
   }
 
-  const sessionId = uuidv4();
-  const cleanedText = String(profileText).trim();
-  const snapshot = buildCareerSnapshot(cleanedText, sourceType);
+  const resumeText = String(profileText).trim();
+  const snapshot = buildCareerSnapshot(resumeText, sourceType);
 
-  try {
-    await createSession(sessionId, {
-      resumeText: cleanedText,
-      sourceType,
-      conversationHistory: [],
-      snapshot,
-      selectedPath: null,
-      pathRound: 0,
-      stage: "analyzed",
-      preferenceSignals: {},
-      events: [
-        {
-          type: "profile_created",
-          at: Date.now(),
-          sourceType
-        }
-      ]
-    });
-  } catch (error) {
-    return next(error);
-  }
-
-  return res.json({
-    success: true,
-    sessionId,
-    snapshot
-  });
+  return res.json({ resumeText, snapshot });
 });
 
 module.exports = router;

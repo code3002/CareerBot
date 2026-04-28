@@ -1,7 +1,6 @@
 const express = require("express");
 
 const { generateResponse, generateStreamResponse } = require("../services/geminiService");
-const { getSession, updateSession } = require("../utils/sessionStore");
 
 const router = express.Router();
 
@@ -31,151 +30,88 @@ function compressForHistory(response) {
 }
 
 function inferStage(response) {
-  if (response.type === "action_plan") {
-    return "planning";
-  }
-
-  if (response.type === "path_cards") {
-    return "paths";
-  }
-
-  if (response.type === "closing") {
-    return "closed";
-  }
-
+  if (response.type === "action_plan") return "planning";
+  if (response.type === "path_cards") return "paths";
+  if (response.type === "closing") return "closed";
   return "clarifying";
 }
 
 function extractPreferenceSignals(message, currentSignals) {
   const nextSignals = { ...currentSignals };
   const normalized = String(message || "").toLowerCase();
-
-  if (normalized.includes("salary")) {
-    nextSignals.salary_sensitive = true;
-  }
-
-  if (normalized.includes("timeline")) {
-    nextSignals.timeline_sensitive = true;
-  }
-
-  if (normalized.includes("industry")) {
-    nextSignals.industry_sensitive = true;
-  }
-
-  if (normalized.includes("role")) {
-    nextSignals.role_sensitive = true;
-  }
-
-  if (normalized.includes("stability")) {
-    nextSignals.prefers_stability = true;
-  }
-
-  if (normalized.includes("upside")) {
-    nextSignals.prefers_upside = true;
-  }
-
+  if (normalized.includes("salary")) nextSignals.salary_sensitive = true;
+  if (normalized.includes("timeline")) nextSignals.timeline_sensitive = true;
+  if (normalized.includes("industry")) nextSignals.industry_sensitive = true;
+  if (normalized.includes("role")) nextSignals.role_sensitive = true;
+  if (normalized.includes("stability")) nextSignals.prefers_stability = true;
+  if (normalized.includes("upside")) nextSignals.prefers_upside = true;
   return nextSignals;
 }
 
 router.post("/", async (req, res) => {
   try {
-    const { sessionId, message } = req.body || {};
-
-    if (!sessionId || !message) {
-      return res.status(400).json({
-        error: "Both sessionId and message are required."
-      });
-    }
-
-    const session = await getSession(sessionId);
-
-    if (!session) {
-      return res.status(404).json({
-        error: "Session not found."
-      });
-    }
-
-    const response = await generateResponse(
-      session.resumeText,
-      session.conversationHistory,
+    const {
+      resumeText,
+      conversationHistory = [],
       message,
-      {
-        sourceType: session.sourceType,
-        snapshot: session.snapshot,
-        pathRound: session.pathRound,
-        selectedPath: session.selectedPath,
-        preferenceSignals: session.preferenceSignals
-      }
-    );
+      sourceType = "resume",
+      snapshot = null,
+      pathRound = 0,
+      selectedPath = null,
+      preferenceSignals = {}
+    } = req.body || {};
 
-    const nextPathRound =
-      response.type === "path_cards"
-        ? (session.pathRound || 0) + 1
-        : session.pathRound || 0;
-    const nextSelectedPath =
-      response.type === "action_plan" ? response.selected_path : session.selectedPath;
+    if (!resumeText || !message) {
+      return res.status(400).json({ error: "resumeText and message are required." });
+    }
+
+    const response = await generateResponse(resumeText, conversationHistory, message, {
+      sourceType, snapshot, pathRound, selectedPath, preferenceSignals
+    });
+
+    const nextPathRound = response.type === "path_cards" ? pathRound + 1 : pathRound;
+    const nextSelectedPath = response.type === "action_plan" ? response.selected_path : selectedPath;
     const nextStage = inferStage(response);
-    const preferenceSignals = extractPreferenceSignals(message, session.preferenceSignals);
-    const events = [
-      ...(session.events || []),
-      { type: "user_message", at: Date.now(), message },
-      { type: "assistant_response", at: Date.now(), responseType: response.type }
-    ];
-
-    const conversationHistory = [
-      ...session.conversationHistory,
+    const nextPreferenceSignals = extractPreferenceSignals(message, preferenceSignals);
+    const nextConversationHistory = [
+      ...conversationHistory,
       { role: "user", content: message },
       { role: "assistant", content: compressForHistory(response) }
     ];
 
-    await updateSession(sessionId, {
-      conversationHistory,
-      pathRound: nextPathRound,
-      selectedPath: nextSelectedPath,
-      stage: nextStage,
-      preferenceSignals,
-      events
-    });
-
     return res.json({
       ...response,
+      nextConversationHistory,
       meta: {
         stage: nextStage,
         pathRound: nextPathRound,
         selectedPath: nextSelectedPath,
-        snapshot: session.snapshot,
-        preferenceSignals
+        snapshot,
+        preferenceSignals: nextPreferenceSignals
       }
     });
   } catch (error) {
     const statusCode = error.statusCode || 500;
-
     return res.status(statusCode).json({
-      error:
-        error.message || "Something went wrong while processing the chat request."
+      error: error.message || "Something went wrong while processing the chat request."
     });
   }
 });
 
 router.post("/stream", async (req, res) => {
-  const { sessionId, message } = req.body || {};
+  const {
+    resumeText,
+    conversationHistory = [],
+    message,
+    sourceType = "resume",
+    snapshot = null,
+    pathRound = 0,
+    selectedPath = null,
+    preferenceSignals = {}
+  } = req.body || {};
 
-  if (!sessionId || !message) {
-    return res.status(400).json({ error: "Both sessionId and message are required." });
-  }
-
-  let session;
-
-  try {
-    session = await getSession(sessionId);
-  } catch (error) {
-    return res.status(500).json({
-      error: error.message || "Something went wrong while loading the session."
-    });
-  }
-
-  if (!session) {
-    return res.status(404).json({ error: "Session not found." });
+  if (!resumeText || !message) {
+    return res.status(400).json({ error: "resumeText and message are required." });
   }
 
   res.setHeader("Content-Type", "text/event-stream");
@@ -188,18 +124,9 @@ router.post("/stream", async (req, res) => {
   }
 
   try {
-    const gen = generateStreamResponse(
-      session.resumeText,
-      session.conversationHistory,
-      message,
-      {
-        sourceType: session.sourceType,
-        snapshot: session.snapshot,
-        pathRound: session.pathRound,
-        selectedPath: session.selectedPath,
-        preferenceSignals: session.preferenceSignals
-      }
-    );
+    const gen = generateStreamResponse(resumeText, conversationHistory, message, {
+      sourceType, snapshot, pathRound, selectedPath, preferenceSignals
+    });
 
     let finalParsed = null;
 
@@ -212,48 +139,38 @@ router.post("/stream", async (req, res) => {
     }
 
     if (!finalParsed) {
-      sendEvent({ done: true, response: { type: "message", message: "Something went wrong." }, meta: {} });
+      sendEvent({
+        done: true,
+        response: { type: "message", message: "Something went wrong." },
+        nextConversationHistory: conversationHistory,
+        meta: {}
+      });
       res.end();
       return;
     }
 
-    const nextPathRound =
-      finalParsed.type === "path_cards"
-        ? (session.pathRound || 0) + 1
-        : session.pathRound || 0;
-    const nextSelectedPath =
-      finalParsed.type === "action_plan" ? finalParsed.selected_path : session.selectedPath;
+    const nextPathRound = finalParsed.type === "path_cards" ? pathRound + 1 : pathRound;
+    const nextSelectedPath = finalParsed.type === "action_plan" ? finalParsed.selected_path : selectedPath;
     const nextStage = inferStage(finalParsed);
-    const preferenceSignals = extractPreferenceSignals(message, session.preferenceSignals);
-    const events = [
-      ...(session.events || []),
-      { type: "user_message", at: Date.now(), message },
-      { type: "assistant_response", at: Date.now(), responseType: finalParsed.type }
-    ];
-    const conversationHistory = [
-      ...session.conversationHistory,
+    const nextPreferenceSignals = extractPreferenceSignals(message, preferenceSignals);
+    const nextConversationHistory = [
+      ...conversationHistory,
       { role: "user", content: message },
       { role: "assistant", content: compressForHistory(finalParsed) }
     ];
 
-    await updateSession(sessionId, {
-      conversationHistory,
-      pathRound: nextPathRound,
-      selectedPath: nextSelectedPath,
-      stage: nextStage,
-      preferenceSignals,
-      events
+    sendEvent({
+      done: true,
+      response: finalParsed,
+      nextConversationHistory,
+      meta: {
+        stage: nextStage,
+        pathRound: nextPathRound,
+        selectedPath: nextSelectedPath,
+        snapshot,
+        preferenceSignals: nextPreferenceSignals
+      }
     });
-
-    const meta = {
-      stage: nextStage,
-      pathRound: nextPathRound,
-      selectedPath: nextSelectedPath,
-      snapshot: session.snapshot,
-      preferenceSignals
-    };
-
-    sendEvent({ done: true, response: finalParsed, meta });
     res.end();
   } catch (error) {
     sendEvent({ done: true, error: error.message || "Streaming failed." });

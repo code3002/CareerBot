@@ -5,7 +5,6 @@ const express = require("express");
 
 dotenv.config();
 
-const { initializeSessionStore } = require("./utils/sessionStore");
 const uploadRouter = require("./routes/upload");
 const chatRouter = require("./routes/chat");
 const profileRouter = require("./routes/profile");
@@ -54,13 +53,6 @@ app.use((err, _req, res, next) => {
   });
 });
 
-initializeSessionStore()
-  .then(() => {
-    app.listen(port, () => {
-      console.log(`Backend running on port ${port}`);
-    });
-  })
-  .catch((error) => {
-    console.error("Failed to initialize session store:", error);
-    process.exit(1);
-  });
+app.listen(port, () => {
+  console.log(`Backend running on port ${port}`);
+});
